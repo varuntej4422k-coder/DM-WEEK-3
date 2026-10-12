@@ -1,0 +1,146 @@
+import weka.core.Instances;
+import weka.core.converters.ConverterUtils.DataSource;
+import weka.classifiers.Classifier;
+import weka.classifiers.Evaluation;
+import weka.classifiers.trees.J48;
+import weka.classifiers.trees.Id3;
+import weka.classifiers.bayes.NaiveBayes;
+import weka.classifiers.lazy.IBk;
+import weka.classifiers.evaluation.output.prediction.PlainText;
+import weka.core.Utils;
+
+import java.util.Random;
+
+public class WekaClassificationExperiment {
+
+    public static void main(String[] args) throws Exception {
+
+        String[] datasets = {
+            "weather.nominal.arff",
+            "iris.arff",
+            "glass.arff"
+        };
+
+        for (String file : datasets) {
+
+            System.out.println("\n==================================");
+            System.out.println("DATASET: " + file);
+            System.out.println("==================================");
+
+            Instances data =
+                new DataSource(file).getDataSet();
+
+            // Set the last attribute as class
+            data.setClassIndex(data.numAttributes() - 1);
+
+            System.out.println("Instances: " + data.numInstances());
+            System.out.println("Attributes: " + data.numAttributes());
+            System.out.println("Class: " + data.classAttribute().name());
+
+            // Four classifiers
+            Classifier[] classifiers = {
+                new Id3(),
+                new J48(),
+                new NaiveBayes(),
+                new IBk(3)
+            };
+
+            String[] names = {
+                "ID3",
+                "J48",
+                "Naive Bayes",
+                "k-NN (IBk)"
+            };
+
+            double bestAccuracy = -1;
+            double worstAccuracy = 101;
+            String bestModel = "";
+            String worstModel = "";
+
+            for (int i = 0; i < classifiers.length; i++) {
+
+                System.out.println("\n----------------------------------");
+                System.out.println("CLASSIFIER: " + names[i]);
+                System.out.println("----------------------------------");
+
+                Classifier model = classifiers[i];
+
+                // 10-fold cross-validation
+                Evaluation evaluation = new Evaluation(data);
+
+                evaluation.crossValidateModel(
+                    model,
+                    data,
+                    10,
+                    new Random(1)
+                );
+
+                System.out.println("Accuracy: "
+                    + (100.0 - evaluation.errorRate() * 100)
+                    + "%");
+
+                System.out.println("Kappa Statistic: "
+                    + evaluation.kappa());
+
+                System.out.println("\nConfusion Matrix:");
+                double[][] matrix = evaluation.confusionMatrix();
+
+                for (double[] row : matrix) {
+                    for (double value : row) {
+                        System.out.print(value + "\t");
+                    }
+                    System.out.println();
+                }
+
+                System.out.println("\nDetailed Evaluation:");
+                System.out.println(evaluation.toSummaryString());
+
+                System.out.println(evaluation.toClassDetailsString());
+
+                // ROC / AUC for each class
+                for (int c = 0; c < data.numClasses(); c++) {
+                    try {
+                        System.out.println(
+                            "AUC for "
+                            + data.classAttribute().value(c)
+                            + ": "
+                            + evaluation.areaUnderROC(c)
+                        );
+                    } catch (Exception e) {
+                        System.out.println("AUC unavailable.");
+                    }
+                }
+
+                // Track best and worst accuracy
+                double accuracy =
+                    100.0 - evaluation.errorRate() * 100;
+
+                if (accuracy > bestAccuracy) {
+                    bestAccuracy = accuracy;
+                    bestModel = names[i];
+                }
+
+                if (accuracy < worstAccuracy) {
+                    worstAccuracy = accuracy;
+                    worstModel = names[i];
+                }
+
+                // Build model on complete dataset
+                model.buildClassifier(data);
+
+                // Print decision tree and rules
+                if (model instanceof J48 || model instanceof Id3) {
+                    System.out.println("\nDecision Tree / Rules:");
+                    System.out.println(model.toString());
+                }
+            }
+
+            System.out.println("\n========== COMPARISON ==========");
+            System.out.println("Best classifier: " + bestModel
+                + " (" + bestAccuracy + "%)");
+
+            System.out.println("Worst classifier: " + worstModel
+                + " (" + worstAccuracy + "%)");
+        }
+    }
+}
